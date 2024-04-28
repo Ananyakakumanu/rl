@@ -2,10 +2,12 @@ import copy
 import pylab
 import numpy as np
 from environment import Env
-from keras.layers import Dense
+from keras.layers import Input
 from keras.optimizers import Adam
 from keras.models import Sequential
 from keras import backend as K
+import tensorflow as tf
+from keras.layers import Dense
 
 EPISODES = 2500
 
@@ -23,7 +25,8 @@ class ReinforceAgent:
         self.learning_rate = 0.001
 
         self.model = self.build_model()
-        self.optimizer = self.optimizer()
+        # self.optimizer = self.optimizer()
+        self.optimizer = Adam(learning_rate=self.learning_rate)
         self.states, self.actions, self.rewards = [], [], []
 
         if self.load_model:
@@ -32,7 +35,8 @@ class ReinforceAgent:
     # state is input and probability of each action(policy) is output of network
     def build_model(self):
         model = Sequential()
-        model.add(Dense(24, input_dim=self.state_size, activation='relu'))
+        model.add(Input(shape=(self.state_size,)))  # Specify input shape here
+        model.add(Dense(24, activation='relu'))
         model.add(Dense(24, activation='relu'))
         model.add(Dense(self.action_size, activation='softmax'))
         model.summary()
@@ -40,8 +44,10 @@ class ReinforceAgent:
 
     # create error function and training function to update policy network
     def optimizer(self):
-        action = K.placeholder(shape=[None, 5])
-        discounted_rewards = K.placeholder(shape=[None, ])
+        # action = K.placeholder(shape=[None, 5])
+        # discounted_rewards = K.placeholder(shape=[None, ])
+        action = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None, 5])
+        discounted_rewards = tf.compat.v1.placeholder(dtype=tf.float32, shape=[None, ])
 
         # Calculate cross entropy error function
         action_prob = K.sum(action * self.model.output, axis=1)
@@ -80,12 +86,27 @@ class ReinforceAgent:
         self.actions.append(act)
 
     # update policy neural network
+    # def train_model(self):
+    #     discounted_rewards = np.float32(self.discount_rewards(self.rewards))
+    #     discounted_rewards -= np.mean(discounted_rewards)
+    #     discounted_rewards /= np.std(discounted_rewards)
+
+    #     self.optimizer([self.states, self.actions, discounted_rewards])
+    #     self.states, self.actions, self.rewards = [], [], []
+
     def train_model(self):
         discounted_rewards = np.float32(self.discount_rewards(self.rewards))
         discounted_rewards -= np.mean(discounted_rewards)
         discounted_rewards /= np.std(discounted_rewards)
 
-        self.optimizer([self.states, self.actions, discounted_rewards])
+        with tf.GradientTape() as tape:
+            action_probs = self.model(np.vstack(self.states))
+            action_masks = tf.one_hot(self.actions, self.action_size)
+            log_probs = tf.math.log(tf.reduce_sum(action_masks * action_probs, axis=1))
+            loss = -tf.reduce_sum(log_probs * discounted_rewards)
+
+        grads = tape.gradient(loss, self.model.trainable_variables)
+        self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
         self.states, self.actions, self.rewards = [], [], []
 
 
