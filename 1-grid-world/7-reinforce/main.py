@@ -3,6 +3,8 @@ import tkinter as tk
 import random
 from collections import namedtuple
 import tensorflow as tf
+from PIL import ImageGrab
+import matplotlib.pyplot as plt
 
 # Define the grid world environment
 class GridWorldEnv:
@@ -11,6 +13,9 @@ class GridWorldEnv:
         self.height = height
         self.goal = goal
         self.obstacles = obstacles
+        self.root = tk.Tk()
+        self.canvas = tk.Canvas(self.root, width=self.width * 50, height=self.height * 50)
+        self.canvas.pack()
         self.reset()
 
         self.observation_space = np.array([(0, 0), (width, height)]).T
@@ -43,7 +48,8 @@ class GridWorldEnv:
 
         return np.array(self.state), reward, self.done
 
-    def render(self, canvas):
+    def render(self):
+        self.canvas.delete("all")
         cell_size = 50
         for x in range(self.width):
             for y in range(self.height):
@@ -54,8 +60,16 @@ class GridWorldEnv:
                     color = "red"
                 elif (x, y) == self.state:
                     color = "blue"
-                canvas.create_rectangle(x * cell_size, y * cell_size, (x + 1) * cell_size, (y + 1) * cell_size, fill=color)
-        canvas.update()
+                self.canvas.create_rectangle(x * cell_size, y * cell_size, (x + 1) * cell_size, (y + 1) * cell_size, fill=color)
+        self.root.update()
+
+    def save_image(self, filename):
+        # Capture a screenshot of the Tkinter canvas and save it as an image file
+        x0 = self.canvas.winfo_rootx()
+        y0 = self.canvas.winfo_rooty()
+        x1 = x0 + self.canvas.winfo_width()
+        y1 = y0 + self.canvas.winfo_height()
+        ImageGrab.grab(bbox=(x0, y0, x1, y1)).save(filename + ".png")
 
 # Define the REINFORCE agent
 class REINFORCEAgent:
@@ -85,6 +99,7 @@ class REINFORCEAgent:
 
     def train(self, episodes=1000, render=False):
         rewards = []
+        episode_rewards_list = []  # Store rewards for plotting
         for episode in range(episodes):
             state = self.env.reset()
             done = False
@@ -96,7 +111,7 @@ class REINFORCEAgent:
 
                 episode_rewards.append(reward)
                 if render:
-                    self.env.render(tk.Tk().canvas)
+                    self.env.render()
 
                 state = next_state
 
@@ -104,7 +119,19 @@ class REINFORCEAgent:
             self.train_on_episode_rewards(discounted_rewards)
 
             rewards.append(sum(episode_rewards))
+            episode_rewards_list.append(sum(episode_rewards))  # Store episode rewards for plotting
             print(f"Episode {episode + 1}: Reward {sum(episode_rewards)}")
+
+            # Save image after each episode
+            if render:
+                self.env.save_image(f"episode_{episode + 1}")
+
+        # Plot rewards over episodes
+        plt.plot(episode_rewards_list)
+        plt.xlabel("Episode")
+        plt.ylabel("Total Reward")
+        plt.title("Rewards Over Episodes")
+        plt.show()
 
         return rewards
 
@@ -145,4 +172,4 @@ class REINFORCEAgent:
 if __name__ == "__main__":
     env = GridWorldEnv()
     agent = REINFORCEAgent(env)
-    agent.train(episodes=1000, render=False)
+    agent.train(episodes=1000, render=True)  # Set render=True to visualize during training
